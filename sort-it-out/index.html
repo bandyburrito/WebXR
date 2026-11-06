@@ -1,105 +1,232 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Sort It Out</title>
+  <meta name="description" content="A recycling game in augmented reality: sort the trash around you into the right bins before time runs out.">
+  <meta name="theme-color" content="#1b3a2b">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♻️</text></svg>">
   <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
-  <!-- Our game code. Loaded here so its components exist before the scene starts. -->
+  <!-- Our code. Loaded here so its components exist before the scene starts. -->
+  <script src="sounds.js"></script>
+  <script src="items.js"></script>
   <script src="game.js"></script>
   <style>
-    body { font-family: sans-serif; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 
-    /* Start screen: a normal web page shown before AR starts */
+    /* ---------- Start screen (a normal web page, shown before AR starts) ---------- */
     #start-screen {
-      position: fixed; inset: 0; z-index: 10;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      background: #1b3a2b; color: white; text-align: center; padding: 20px;
+      position: fixed; inset: 0; z-index: 10; overflow-y: auto;
+      background: #1b3a2b; color: white; padding: 24px 16px;
     }
-    #start-screen h1 { font-size: 2.4em; margin: 0 0 10px; }
-    #start-button {
-      font-size: 1.4em; padding: 16px 40px; margin-top: 20px;
-      border: none; border-radius: 30px; background: #4ade80; color: #1b3a2b; font-weight: bold;
+    #start-screen .card { max-width: 440px; margin: 0 auto; text-align: center; }
+    #start-screen h1 { font-size: 2.3em; margin: 8px 0 4px; }
+    #start-screen h2 { font-size: 1.05em; margin: 22px 0 8px; color: #4ade80; text-transform: uppercase; letter-spacing: 0.06em; }
+    .tagline { margin: 0; opacity: 0.85; }
+    .steps { text-align: left; margin: 0; padding-left: 22px; line-height: 1.5; }
+    .rules { list-style: none; text-align: left; margin: 0; padding: 0; line-height: 1.45; }
+    .rules li { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+    .rules b { flex: none; min-width: 58px; padding: 1px 6px; border-radius: 6px; text-align: center; font-size: 0.85em; }
+    #start-button, #pc-button {
+      font-size: 1.3em; font-weight: bold; padding: 15px 40px; margin-top: 24px;
+      border: none; border-radius: 30px; background: #4ade80; color: #1b3a2b;
     }
-    #pc-button {
-      font-size: 1.1em; padding: 12px 30px; margin-top: 12px;
-      border: 2px solid #4ade80; border-radius: 30px; background: none; color: #4ade80;
-    }
+    #pc-button { display: block; margin: 12px auto 0; }
+    #pc-button[hidden] { display: none; }
+    #ar-warning, #best-score { margin: 12px 0 0; opacity: 0.85; }
+    .safety { margin-top: 18px; font-size: 0.85em; opacity: 0.7; }
 
-    /* Overlay: drawn on top of the 3D view while playing.
-       Hidden until the game starts. "touch-action: none" stops the browser from
-       scrolling/zooming when we swipe. */
+    /* ---------- Overlay: drawn on top of the camera view while playing ---------- */
+    /* "touch-action: none" stops the browser from scrolling/zooming when we swipe */
     #overlay {
       display: none; position: fixed; inset: 0; z-index: 5;
-      touch-action: none; user-select: none; -webkit-user-select: none;
+      touch-action: none; user-select: none; -webkit-user-select: none; color: white;
     }
     #overlay.active { display: block; }
+
+    /* Top bar: quit button, timer, round, score */
+    #quit-button {
+      position: absolute; top: 12px; left: 12px; width: 40px; height: 40px;
+      border: none; border-radius: 20px; background: rgba(0, 0, 0, 0.6); color: white; font-size: 18px;
+    }
+    #hud {
+      position: absolute; top: 12px; left: 62px; right: 12px; height: 40px;
+      display: flex; align-items: center; justify-content: space-between; pointer-events: none;
+    }
+    .pill { background: rgba(0, 0, 0, 0.6); padding: 7px 13px; border-radius: 16px; font-weight: bold; }
+    #timer { font-size: 1.2em; font-variant-numeric: tabular-nums; }
+    #timer.low { background: #dc2626; }
+    #round-label { font-size: 0.85em; }
+    #score { font-size: 1.2em; }
+    #score::before { content: "★ "; color: #ffd93d; }
+
     /* "width: max-content; max-width: 90%" = as wide as the text, but wraps on narrow phones */
     #message {
-      position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
-      width: max-content; max-width: 90%; text-align: center;
-      background: rgba(0, 0, 0, 0.6); color: white; padding: 10px 18px;
-      border-radius: 20px; font-size: 1.1em;
-    }
-    #score {
-      position: absolute; top: 14px; right: 16px;
-      background: rgba(0, 0, 0, 0.6); color: white; padding: 6px 14px;
-      border-radius: 14px; font-size: 1.2em; font-weight: bold;
+      position: absolute; top: 66px; left: 50%; transform: translateX(-50%);
+      width: max-content; max-width: 90%; text-align: center; pointer-events: none;
+      background: rgba(0, 0, 0, 0.6); padding: 9px 16px; border-radius: 18px; font-size: 1.05em;
     }
 
-    /* Big feedback text ("+10 ✓", "Missed!") that pops up and fades away */
+    /* Aim circle in the middle while holding trash */
+    #crosshair {
+      display: none; position: absolute; left: 50%; top: 50%; width: 26px; height: 26px;
+      margin: -13px 0 0 -13px; border: 2px solid white; border-radius: 50%;
+      box-shadow: 0 0 4px rgba(0, 0, 0, 0.7); pointer-events: none;
+    }
+    #crosshair.show { display: block; }
+
+    /* Big feedback text ("+10 ✓", "Missed!", "3, 2, 1") that pops up and fades away */
     #popup {
-      position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+      position: absolute; top: 38%; left: 50%; transform: translate(-50%, -50%);
       width: max-content; max-width: 90%; white-space: pre-line; /* pre-line: "\n" = new line */
       font-size: 2em; font-weight: bold; text-align: center;
       text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7); opacity: 0; pointer-events: none;
     }
-    #popup.show { animation: pop 1s ease-out; }
+    #popup.show { animation: pop 1.1s ease-out; }
     @keyframes pop {
       0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
       15%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
       70%  { opacity: 1; transform: translate(-50%, -60%) scale(1); }
       100% { opacity: 0; transform: translate(-50%, -90%) scale(1); }
     }
+
+    #fallback-button {
+      position: absolute; bottom: 48px; left: 50%; transform: translateX(-50%);
+      font-size: 1.05em; font-weight: bold; padding: 13px 24px; border: none; border-radius: 26px;
+      background: #ffd93d; color: #1b3a2b; white-space: nowrap;
+    }
+    #fallback-button[hidden] { display: none; }
+
+    #debug {
+      position: absolute; left: 8px; right: 8px; bottom: 8px; pointer-events: none;
+      font: 12px monospace; text-shadow: 0 1px 2px black;
+    }
+
+    /* ---------- Round screen (after each round) ---------- */
+    #round-screen {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: rgba(0, 0, 0, 0.4);
+    }
+    #round-screen[hidden] { display: none; }
+    .panel {
+      width: min(92vw, 420px); max-height: 88vh; overflow-y: auto; touch-action: pan-y;
+      background: white; color: #1b3a2b; border-radius: 20px; padding: 20px; text-align: center;
+    }
+    .panel h2 { margin: 0 0 4px; font-size: 1.3em; }
+    #rs-score { font-size: 3em; font-weight: 800; color: #2e9e4f; line-height: 1.1; }
+    #rs-best, #rs-total { margin: 2px 0; font-weight: bold; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 14px 0; }
+    .stats div { background: #f0f7f3; border-radius: 10px; padding: 8px 2px; }
+    .stats b { display: block; font-size: 1.3em; }
+    .stats span { font-size: 0.75em; color: #4b5563; }
+    .panel h3 { margin: 10px 0 6px; font-size: 1em; text-align: left; }
+    #rs-mistakes { list-style: none; margin: 0; padding: 0; text-align: left; }
+    #rs-mistakes li { padding: 7px 0; border-top: 1px solid #e5e7eb; }
+    #rs-mistakes li small { display: block; color: #6b7280; margin-top: 2px; }
+    #rs-mistakes li.perfect { color: #2e9e4f; font-weight: bold; }
+    .panel button {
+      display: block; width: 100%; margin-top: 10px; padding: 13px; border: none; border-radius: 26px;
+      font-size: 1.1em; font-weight: bold; background: #2e9e4f; color: white;
+    }
+    .panel button.secondary { background: #e5e7eb; color: #1b3a2b; }
+    .panel button[hidden] { display: none; }
   </style>
 </head>
 <body>
+  <!-- Start screen -->
   <div id="start-screen">
-    <h1>Sort It Out ♻️</h1>
-    <p>Throw the trash into the right bin!</p>
-    <button id="start-button">Start AR</button>
-    <p id="ar-warning"></p>
-    <!-- Only shown when this device can't do AR (e.g. a PC) -->
-    <button id="pc-button" hidden>Test on PC</button>
+    <div class="card">
+      <h1>Sort It Out ♻️</h1>
+      <p class="tagline">Clean up the room before time runs out!</p>
+
+      <h2>How to play</h2>
+      <ol class="steps">
+        <li>Point your phone at the floor and tap to place the bins.</li>
+        <li>Find the trash around you. Some of it is behind you!</li>
+        <li>Tap trash to pick it up, aim at the right bin and swipe up to throw.</li>
+      </ol>
+
+      <h2>Swiss recycling rules</h2>
+      <ul class="rules">
+        <li><b style="background:#2f7de1">PET</b>drink bottles only, in any colour</li>
+        <li><b style="background:#8f9aa5">ALU</b>cans, trays and foil</li>
+        <li><b style="background:#3a7d6b">GLASS</b>sorted by colour: clear, brown, green. Other colours go into green.</li>
+        <li><b style="background:#e0a526">PAPER</b>newspapers, magazines, office paper</li>
+        <li><b style="background:#4a4a4a">TRASH</b>things that look recyclable but aren't</li>
+      </ul>
+
+      <button id="start-button">Start AR</button>
+      <button id="pc-button" hidden>Test on PC</button>
+      <p id="ar-warning"></p>
+      <p id="best-score"></p>
+      <p class="safety">⚠️ Watch your surroundings while you play.</p>
+    </div>
   </div>
 
   <!-- Overlay (HUD) on top of the camera view. "a-no-style" = we style it ourselves. -->
   <div id="overlay" class="a-no-style">
-    <div id="score">Score: 0</div>
-    <div id="message">Move your phone slowly to find the floor</div>
+    <button id="quit-button" aria-label="Quit">✕</button>
+    <div id="hud" style="visibility: hidden">
+      <div id="timer" class="pill">2:00</div>
+      <div id="round-label" class="pill"></div>
+      <div id="score" class="pill">0</div>
+    </div>
+    <div id="message"></div>
+    <div id="crosshair"></div>
     <div id="popup"></div>
+    <button id="fallback-button" hidden>Use estimated floor</button>
+    <div id="debug"></div>
+
+    <div id="round-screen" hidden>
+      <div class="panel">
+        <h2 id="rs-title"></h2>
+        <div id="rs-score"></div>
+        <p id="rs-best"></p>
+        <p id="rs-total"></p>
+        <div class="stats">
+          <div><b id="rs-right"></b><span>right</span></div>
+          <div><b id="rs-wrong"></b><span>wrong</span></div>
+          <div><b id="rs-accuracy"></b><span>accuracy</span></div>
+          <div><b id="rs-streak"></b><span>best streak</span></div>
+        </div>
+        <h3>Learn from your mistakes</h3>
+        <ul id="rs-mistakes"></ul>
+        <button id="next-button">Next round</button>
+        <button id="restart-button" class="secondary">Restart from round 1</button>
+      </div>
+    </div>
   </div>
 
   <!--
-    webxr:      we need "hit-test" (find real surfaces) and "local-floor" (floor = height 0).
-                overlayElement = the HUD above, shown on top of the camera.
+    webxr:      "local-floor" = the floor is at height 0. "hit-test" finds real surfaces
+                (optional, so the game still starts on phones without it). overlayElement = the HUD above.
     xr-mode-ui: only AR mode, and our big "Start AR" button enters it.
   -->
   <a-scene
     game
-    webxr="requiredFeatures: hit-test, local-floor; overlayElement: #overlay"
+    webxr="requiredFeatures: local-floor; optionalFeatures: hit-test, dom-overlay; overlayElement: #overlay"
     xr-mode-ui="XRMode: ar; enterARButton: #start-button"
     renderer="colorManagement: true">
 
-    <a-entity light="type: ambient; intensity: 0.8"></a-entity>
-    <a-entity light="type: directional; intensity: 0.8" position="1 3 1"></a-entity>
+    <a-entity light="type: hemisphere; color: #ffffff; groundColor: #8a8f99; intensity: 1"></a-entity>
+    <a-entity light="type: directional; intensity: 0.7" position="1 3 1"></a-entity>
 
-    <!-- White ring that sits on the floor where you point your phone -->
-    <a-ring id="reticle" floor-finder radius-inner="0.08" radius-outer="0.11"
-      rotation="-90 0 0" material="color: white; shader: flat"></a-ring>
+    <!-- White ring where you point at the floor, plus a see-through preview of the bin row -->
+    <a-entity id="reticle" floor-finder>
+      <a-ring radius-inner="0.1" radius-outer="0.14" rotation="-90 0 0" material="color: #ffffff; shader: flat"
+        animation="property: scale; to: 1.15 1.15 1.15; dir: alternate; loop: true; dur: 600"></a-ring>
+      <a-plane id="row-preview" rotation="-90 0 0" width="2.4" height="0.34"
+        material="color: #ffffff; shader: flat; opacity: 0.25; transparent: true"></a-plane>
+    </a-entity>
 
     <!-- pc-controls = arrow keys + WASD, only used in PC test mode -->
     <a-entity camera pc-controls></a-entity>
   </a-scene>
+
+  <script>
+    // Make the row preview exactly as wide as the real row of bins (ROW comes from items.js)
+    document.getElementById('row-preview').setAttribute('width', ROW.width);
+  </script>
 </body>
 </html>
